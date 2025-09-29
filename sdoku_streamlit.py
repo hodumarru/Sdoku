@@ -81,6 +81,7 @@ def generate_board(probability):
     st.session_state.error_count = 0
     st.session_state.message = f"게임 시작! 남은 기회: {3 - st.session_state.error_count}번"
     st.session_state.highlight_incorrect = False
+    st.rerun() # 상태 변경 후 UI 강제 업데이트
 
 def check_sudoku_rules(board):
     """스도쿠 규칙 (행/열/3x3 블록 중복)을 확인합니다."""
@@ -139,11 +140,12 @@ def handle_finish_click():
         
         if st.session_state.error_count >= 3:
             st.session_state.is_playing = False
-            st.session_state.message = "**게임 오버:** 3번의 기회를 모두 소진했습니다."
+            st.session_state.message = "**게임 오버:** 3번의 기회를 모두 소진했습니다. 다시 시작하려면 Shuffle을 누르세요."
             st.session_state.highlight_incorrect = True
         else:
             st.session_state.message = f"오류가 있습니다. 남은 기회: {3 - st.session_state.error_count}번"
-
+    
+    st.rerun() # Finish 버튼 클릭 후 UI 강제 업데이트
 
 def load_ranking():
     """메모리에서 순위 데이터를 읽습니다."""
@@ -251,24 +253,8 @@ with col_finish:
     # 정답 확인 버튼
     st.button("✅ Finish", on_click=handle_finish_click, type="secondary", use_container_width=True)
 
-with col_timer:
-    # 타이머 표시
-    if st.session_state.is_playing and st.session_state.start_time != 0:
-        elapsed_time = int(time.time() - st.session_state.start_time)
-        timer_text = time_to_string(elapsed_time)
-    elif 'time_taken' in st.session_state and not st.session_state.is_playing:
-        timer_text = time_to_string(st.session_state.time_taken)
-    else:
-        timer_text = "00:00"
-        
-    st.markdown(f"""
-        <div style="text-align: center; background-color: #f3f4f6; padding: 0.5rem; border-radius: 0.5rem;">
-            <p style="font-size: 1.2rem; font-weight: bold; margin: 0;">⏱️ {timer_text}</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-# 메시지 출력
-st.info(st.session_state.message)
+# 타이머는 별도의 컨테이너를 사용하여 업데이트 루프를 만듭니다.
+timer_container = col_timer.empty() 
 
 # 랭킹 표시 (Sidebar)
 with st.sidebar:
@@ -284,6 +270,45 @@ with st.sidebar:
         
     st.markdown(ranking_text)
 
+# --- 타이머 루프 시작 ---
+# Streamlit의 업데이트 패턴을 활용하여 1초마다 UI를 갱신합니다.
+if st.session_state.is_playing and st.session_state.start_time != 0:
+    elapsed_time = int(time.time() - st.session_state.start_time)
+    timer_text = time_to_string(elapsed_time)
+    
+    with timer_container.container():
+        st.markdown(f"""
+            <div style="text-align: center; background-color: #f3f4f6; padding: 0.5rem; border-radius: 0.5rem;">
+                <p style="font-size: 1.2rem; font-weight: bold; margin: 0;">⏱️ {timer_text}</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # 1초 대기 후 전체 스크립트를 재실행하여 타이머를 업데이트합니다.
+    time.sleep(1)
+    st.rerun()
+
+elif 'time_taken' in st.session_state and not st.session_state.is_playing:
+    # 게임 종료 후 최종 시간 표시
+    timer_text = time_to_string(st.session_state.time_taken)
+    with timer_container.container():
+        st.markdown(f"""
+            <div style="text-align: center; background-color: #d1fae5; padding: 0.5rem; border-radius: 0.5rem;">
+                <p style="font-size: 1.2rem; font-weight: bold; margin: 0;">✅ {timer_text}</p>
+            </div>
+        """, unsafe_allow_html=True)
+else:
+    # 초기 또는 게임 시작 전
+    timer_text = "00:00"
+    with timer_container.container():
+        st.markdown(f"""
+            <div style="text-align: center; background-color: #f3f4f6; padding: 0.5rem; border-radius: 0.5rem;">
+                <p style="font-size: 1.2rem; font-weight: bold; margin: 0;">⏱️ {timer_text}</p>
+            </div>
+        """, unsafe_allow_html=True)
+# --- 타이머 루프 끝 ---
+
+# 메시지 출력
+st.info(st.session_state.message)
 
 # 스도쿠 보드 UI (9x9 그리드)
 for i in range(9):
