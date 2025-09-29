@@ -7,7 +7,7 @@ from io import StringIO
 
 # --- 1. 상태 및 상수 초기화 ---
 
-# 스도쿠 초기 패턴 (강의노트 18페이지의 기본 패턴 사용)
+# 스도쿠 기본 정답 패턴 (9x9)
 BASIC_SUDOKU = np.array([
     ['1','2','3','4','5','6','7','8','9'],
     ['4','5','6','7','8','9','1','2','3'],
@@ -43,12 +43,12 @@ def initialize_state():
 
 initialize_state()
 
-# --- 2. 게임 로직 함수 (Shuffle/Check/Ranking) ---
+# --- 2. 게임 로직 함수 ---
 
 def generate_board(probability):
-    """새로운 스도쿠 문제를 생성하고 상태를 초기화합니다."""
+    """새로운 스도쿠 문제를 생성합니다."""
     
-    # 1. 숫자 치환 (강의노트 18페이지)
+    # 1. 숫자 1-9를 무작위로 치환하여 정답 생성
     random19 = np.arange(1, 10)
     np.random.shuffle(random19)
     
@@ -57,7 +57,7 @@ def generate_board(probability):
         for j in range(9):
             current_solution[i][j] = str(random19[int(current_solution[i][j])-1])
 
-    # 2. 빈칸 만들기 (강의노트 19페이지)
+    # 2. 확률에 따라 빈칸(문제) 생성
     current_board = current_solution.copy()
     disabled = [[False for _ in range(9)] for _ in range(9)]
     
@@ -67,9 +67,12 @@ def generate_board(probability):
                 current_board[i][j] = ''
                 disabled[i][j] = False # 입력 가능
             else:
-                disabled[i][j] = True # 입력 불가능 (고정된 숫자)
+                disabled[i][j] = True # 고정 숫자
+            
+            # UI 필드 값 초기화
+            st.session_state[f'cell_{i}_{j}'] = current_board[i][j]
 
-    # 3. 상태 업데이트
+    # 3. 상태 업데이트 및 게임 시작
     st.session_state.solution = current_solution.tolist()
     st.session_state.board = current_board.tolist()
     st.session_state.disabled_cells = disabled
@@ -77,30 +80,29 @@ def generate_board(probability):
     st.session_state.start_time = time.time()
     st.session_state.error_count = 0
     st.session_state.message = f"게임 시작! 남은 기회: {3 - st.session_state.error_count}번"
-    st.session_state.highlight_incorrect = False # 하이라이트 초기화
+    st.session_state.highlight_incorrect = False
 
 def check_sudoku_rules(board):
-    """스도쿠 규칙(행/열/3x3 블록)을 확인합니다."""
+    """스도쿠 규칙 (행/열/3x3 블록 중복)을 확인합니다."""
     
     board = np.array(board)
     
-    # 빈칸 검사
+    # 빈칸 체크
     if '' in board:
         return False
         
-    # 행/열/3x3 블록 검사
+    # 숫자 변환 및 행/열/블록 규칙 확인
     try:
         current_values = board.astype(int)
     except ValueError:
-        # 숫자가 아닌 값이 포함되어 있으면 오류
         return False
 
-    # 행/열 검사
+    # 행/열 체크
     for i in range(9):
         if len(set(current_values[i, :])) != 9 or len(set(current_values[:, i])) != 9:
             return False
             
-    # 3x3 박스 검사
+    # 3x3 박스 체크
     for i in range(0, 9, 3):
         for j in range(0, 9, 3):
             box = current_values[i:i+3, j:j+3].flatten()
@@ -110,15 +112,12 @@ def check_sudoku_rules(board):
     return True
 
 def handle_finish_click():
-    """Finish 버튼 클릭 시 정답 확인 로직을 처리합니다."""
+    """Finish 버튼 클릭을 처리하고 정답을 확인합니다."""
     if not st.session_state.is_playing:
         st.session_state.message = "먼저 Shuffle 버튼을 눌러 게임을 시작하세요!"
         return
 
-    # 1. 정답과 비교하여 모든 칸이 채워졌는지 확인 (PyQt의 highlight_correctness 로직 단순화)
     is_filled = all(st.session_state.board[i][j] != '' for i in range(9) for j in range(9))
-    
-    # 2. 모든 칸이 채워졌고, 스도쿠 규칙을 만족하는지 확인
     is_correct = check_sudoku_rules(st.session_state.board)
     is_solution_match = all(st.session_state.board[i][j] == st.session_state.solution[i][j] 
                             for i in range(9) for j in range(9))
@@ -126,17 +125,17 @@ def handle_finish_click():
     if not is_filled:
         st.session_state.error_count += 1
         st.session_state.message = f"빈칸을 모두 채워주세요! 남은 기회: {3 - st.session_state.error_count}번"
-        st.session_state.highlight_incorrect = False # 이 경우 하이라이트 안 함
-    elif is_solution_match and is_correct: # 정답과 일치하고 규칙도 맞으면 성공
+        st.session_state.highlight_incorrect = False
+    elif is_solution_match and is_correct: # 성공
         st.session_state.is_playing = False
         time_taken = time.time() - st.session_state.start_time
         st.session_state.time_taken = int(time_taken)
         st.session_state.message = "🎉 **!!! ~~~Congratulation~~~ !!!** 🎉"
         st.session_state.highlight_incorrect = False
         st.session_state.show_name_input = True
-    else:
+    else: # 실패
         st.session_state.error_count += 1
-        st.session_state.highlight_incorrect = True # 틀린 부분 하이라이트
+        st.session_state.highlight_incorrect = True
         
         if st.session_state.error_count >= 3:
             st.session_state.is_playing = False
@@ -147,9 +146,8 @@ def handle_finish_click():
 
 
 def load_ranking():
-    """CSV에서 순위를 읽어옵니다."""
+    """메모리에서 순위 데이터를 읽습니다."""
     try:
-        # StringIO를 사용하여 임시 파일처럼 처리 (Streamlit 환경에 적합)
         if 'ranking_data' not in st.session_state:
             st.session_state.ranking_data = StringIO("Name,Time\n")
             
@@ -158,11 +156,11 @@ def load_ranking():
         
         rankings = []
         for i, row in enumerate(reader):
-            if i == 0 or not row or len(row) < 2: continue # 헤더 또는 빈 줄 건너뛰기
+            if i == 0 or not row or len(row) < 2: continue
             try:
                 rankings.append((row[0], int(row[1])))
             except ValueError:
-                continue # 시간 값이 숫자가 아닌 경우 무시
+                continue
 
         rankings.sort(key=lambda x: x[1])
         return rankings
@@ -170,30 +168,30 @@ def load_ranking():
         return []
 
 def save_ranking(player_name, time_taken):
-    """CSV에 순위를 저장합니다."""
-    # 메모리상의 StringIO에 추가
-    st.session_state.ranking_data.seek(0, 2) # 파일 끝으로 이동
+    """순위를 메모리 (StringIO)에 저장합니다."""
+    st.session_state.ranking_data.seek(0, 2)
     writer = csv.writer(st.session_state.ranking_data)
     writer.writerow([player_name, time_taken])
     st.session_state.message = f"'{player_name}'님의 기록({time_to_string(time_taken)})이 등록되었습니다! ✨"
     st.session_state.show_name_input = False
     
 def time_to_string(seconds):
-    """초를 'MM:SS' 형식으로 변환합니다."""
+    """초를 MM:SS 형식의 문자열로 변환합니다."""
     minutes = seconds // 60
     secs = seconds % 60
     return f"{minutes:02}:{secs:02}"
 
 def update_cell_value(i, j):
-    """텍스트 입력 필드의 값이 변경될 때 호출됩니다."""
+    """셀 값이 변경될 때 상태를 업데이트합니다."""
     new_value = st.session_state[f'cell_{i}_{j}']
     
-    # 입력 값 유효성 검사 (1-9 또는 공백만 허용)
+    # 입력 값 유효성 (1-9 또는 공백) 검사
     if new_value == '' or (new_value.isdigit() and 1 <= int(new_value) <= 9):
+        # board 상태 업데이트
         st.session_state.board[i][j] = new_value
-        st.session_state.highlight_incorrect = False # 값 변경 시 하이라이트 해제
+        st.session_state.highlight_incorrect = False # 하이라이트 해제
     else:
-        # 잘못된 입력 시, 현재 필드를 이전 값으로 되돌림 (사용자 경험 개선)
+        # 유효하지 않은 입력 시 이전 값으로 되돌림
         st.session_state[f'cell_{i}_{j}'] = st.session_state.board[i][j]
         st.session_state.message = "Error: 1~9 사이의 숫자 또는 빈칸만 입력 가능합니다."
 
@@ -203,10 +201,9 @@ def update_cell_value(i, j):
 st.set_page_config(layout="wide")
 st.title("🔢 Streamlit Sudoku Game")
 
-# CSS를 사용하여 스도쿠 그리드 디자인
+# CSS 스타일 정의: 입력 필드, 3x3 경계선, 고정/오류 셀
 st.markdown("""
 <style>
-/* Streamlit 기본 스타일 재정의 */
 .stTextInput > div > div > input {
     text-align: center;
     font-size: 1.25rem !important;
@@ -216,50 +213,46 @@ st.markdown("""
 }
 .fixed-number > div > div > input {
     font-weight: bold;
-    color: #1f2937 !important; /* Tailwind gray-900 */
-    background-color: #e5e7eb !important; /* Tailwind gray-200 */
+    color: #1f2937 !important;
+    background-color: #e5e7eb !important;
     cursor: default;
 }
-/* 3x3 경계선 스타일 */
-.sudoku-row {
-    display: flex;
-}
 .sudoku-cell {
-    border: 1px solid #d1d5db; /* Tailwind gray-300 */
+    border: 1px solid #d1d5db;
     padding: 1px;
 }
 .block-border-right {
-    border-right: 3px solid #6b7280 !important; /* Tailwind gray-500 */
+    border-right: 3px solid #6b7280 !important;
 }
 .block-border-bottom {
-    border-bottom: 3px solid #6b7280 !important; /* Tailwind gray-500 */
+    border-bottom: 3px solid #6b7280 !important;
 }
 .incorrect-cell > div > div > input {
-    background-color: #fee2e2 !important; /* Tailwind red-100 */
-    border: 2px solid #ef4444 !important; /* Tailwind red-500 */
+    background-color: #fee2e2 !important;
+    border: 2px solid #ef4444 !important;
     color: #ef4444 !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
-# 상단 제어판 (Control Panel)
+# 상단 제어판 레이아웃
 col_shuffle, col_prob, col_finish, col_timer = st.columns([1, 1, 1, 1])
 
 with col_shuffle:
-    # Shuffle 버튼 (게임 시작)
+    # 게임 시작 버튼
     st.button("🔄 Shuffle", on_click=lambda: generate_board(st.session_state.probability), type="primary", use_container_width=True)
 
 with col_prob:
-    # 난이도 슬라이더 (Probability)
+    # 난이도 슬라이더
     st.session_state.probability = st.slider("빈칸 확률(1-p)", 0.1, 0.9, st.session_state.probability, 0.05)
 
 with col_finish:
-    # Finish 버튼 (정답 확인)
+    # 정답 확인 버튼
     st.button("✅ Finish", on_click=handle_finish_click, type="secondary", use_container_width=True)
 
 with col_timer:
-    # 타이머 표시 (게임 중일 때만 표시)
+    # 타이머 표시
     if st.session_state.is_playing and st.session_state.start_time != 0:
         elapsed_time = int(time.time() - st.session_state.start_time)
         timer_text = time_to_string(elapsed_time)
@@ -274,7 +267,7 @@ with col_timer:
         </div>
     """, unsafe_allow_html=True)
 
-# 메시지 출력 (resEdit 대체)
+# 메시지 출력
 st.info(st.session_state.message)
 
 # 랭킹 표시 (Sidebar)
@@ -292,16 +285,19 @@ with st.sidebar:
     st.markdown(ranking_text)
 
 
-# 스도쿠 보드 UI (9x9 Grid)
+# 스도쿠 보드 UI (9x9 그리드)
 for i in range(9):
     cols = st.columns(9)
     for j in range(9):
         cell_key = f'cell_{i}_{j}'
-        cell_value = st.session_state.board[i][j]
-        is_disabled = st.session_state.disabled_cells[i][j]
-        is_incorrect_highlight = st.session_state.highlight_incorrect and (cell_value != st.session_state.solution[i][j] and not is_disabled)
         
-        # 3x3 블록 경계선 스타일 적용
+        # 표시할 셀 값 가져오기
+        cell_value_to_display = st.session_state.get(cell_key, st.session_state.board[i][j])
+        
+        is_disabled = st.session_state.disabled_cells[i][j]
+        is_incorrect_highlight = st.session_state.highlight_incorrect and (cell_value_to_display != st.session_state.solution[i][j] and not is_disabled)
+        
+        # 3x3 블록 및 상태에 따른 CSS 클래스 설정
         cell_class = "sudoku-cell"
         if (j + 1) % 3 == 0 and j != 8:
             cell_class += " block-border-right"
@@ -312,17 +308,16 @@ for i in range(9):
         if is_incorrect_highlight:
              cell_class += " incorrect-cell"
         
-        # Streamlit 텍스트 입력 위젯
+        # Streamlit 텍스트 입력 위젯 렌더링
         with cols[j]:
             st.markdown(f'<div class="{cell_class}">', unsafe_allow_html=True)
             
-            # 고정된 숫자는 read_only, 입력 가능한 칸은 editable
             st.text_input(
                 label="", 
-                value=cell_value, 
+                value=cell_value_to_display, 
                 max_chars=1, 
                 key=cell_key, 
-                disabled=is_disabled or not st.session_state.is_playing, # 게임 중이거나 고정된 칸이 아닐 때만 입력 가능
+                disabled=is_disabled or not st.session_state.is_playing, # 고정/게임 중 상태에 따라 비활성화
                 label_visibility="collapsed",
                 on_change=update_cell_value,
                 args=(i, j)
@@ -342,7 +337,3 @@ if st.session_state.get('show_name_input', False):
             st.rerun()
         else:
             st.warning("이름을 입력해주세요.")
-
-# Streamlit은 상호작용 후 전체 스크립트를 재실행해야 하므로,
-# PyQt처럼 실시간 타이머를 구현하기 어렵습니다. 
-# 시간은 버튼 클릭 시점에 계산되어 표시됩니다.
